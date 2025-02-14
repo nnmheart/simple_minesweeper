@@ -3,12 +3,33 @@
 #include<malloc.h>
 #include<assert.h>
 #include<SDL2/SDL.h>
+#include<SDL2/SDL_image.h>
 
 #include<app.h>
 #include<mineswep.h>
 
 app_t* app;
 minesweeper_t* game;
+SDL_Texture* game_textures[13];
+
+const int shift_x = 200;
+const int shift_y = 50;
+
+enum TextureIds {
+    CELL_UNTOUCHED = 0,
+    CELL_FLAGGED = 1,
+    CELL_BOMB = 2,
+    CELL_0 = 3,
+    CELL_1 = 4,
+    CELL_2 = 5,
+    CELL_3 = 6,
+    CELL_4 = 7,
+    CELL_5 = 8,
+    CELL_6 = 9,
+    CELL_7 = 10,
+    CELL_10 = 11,
+    CELL_UNTOUCHED_HOVERED = 12
+};
 
 void handle_keypress(SDL_Event event) {
     bool pressed = (event.type == SDL_KEYDOWN) ? true : false;
@@ -43,7 +64,73 @@ void on_mouse_move(SDL_Event e) {
     app->mouse_x = (int)e.motion.x;
     app->mouse_y = (int)e.motion.y;
 }
-void on_mouse_click(SDL_Event e) {}
+
+
+
+void reveal_cell(int i, int j, bool only_zero) {
+    int width = game->grid_width;
+    int height = game->grid_height;
+
+    // I don't want to deal with constantly making if statements so just do it here.
+    if (i < 0) return;
+    if (j < 0) return;
+    if (i >= width) return;
+    if (j >= height) return;
+
+    cell_t** cells = game->cells;
+    cell_t* cell = &cells[i][j];
+
+    if (cell->is_revealed) return; // End case for the recursion.
+    if (cell->is_flagged) return;
+    if (only_zero) {
+        if (!cell->is_mine && (cell->number == 0)) cell->is_revealed = true;
+        else return;
+    } else {
+        cell->is_revealed = true;
+    }
+
+    if (cell->is_mine) {
+        // TODO: Bomb logic.
+    } else {
+        if (cell->number != 0) return;
+        reveal_cell(i - 1, j + 1, true);
+        reveal_cell(i - 1, j    , true);
+        reveal_cell(i - 1, j - 1, true);
+        
+        reveal_cell(i    , j + 1, true);
+        reveal_cell(i    , j - 1, true);
+
+        reveal_cell(i + 1, j + 1, true);
+        reveal_cell(i + 1, j    , true);
+        reveal_cell(i + 1, j - 1, true);
+    }
+}
+
+void flag_cell(int i, int j) {
+    cell_t* cell = &game->cells[i][j];
+    if (cell->is_revealed) return;
+    cell->is_flagged = !cell->is_flagged;
+}
+
+void on_mouse_click(SDL_Event e) {
+    int target_x = e.button.x;
+    int target_y = e.button.y;
+    int cell_x = target_x + (int)(app->render_x) - shift_x;
+    int cell_y = target_y + (int)(app->render_y) - shift_y;
+    int cell_i = cell_x / app->cell_size;
+    int cell_j = cell_y / app->cell_size;
+
+    if (cell_i < 0) return;
+    if (cell_j < 0) return;
+    if (cell_i >= game->grid_width) return;
+    if (cell_j >= game->grid_height) return;
+
+    if (e.button.button == SDL_BUTTON_LEFT) {
+        reveal_cell(cell_i, cell_j, false);
+    } else {
+        flag_cell(cell_i, cell_j);
+    }
+}
 
 void game_handle_events() {
     SDL_Event event;
@@ -93,21 +180,31 @@ void game_render_cell(int i, int j) {
     if (y > (ry + sh)) return;
 
     SDL_Rect rect = {
-        x - rx, 
-        y - ry, 
+        x - rx + shift_x, 
+        y - ry + shift_y, 
         w,
         h
     };
     
-    if ((rect.x < app->mouse_x) && (app->mouse_x < (rect.x + rect.w)) && (rect.y < app->mouse_y) && (app->mouse_y < (rect.y + rect.h))) {
-        SDL_SetRenderDrawColor(app->renderer, 255, 255, 255, 255);
-    } else {
-        SDL_SetRenderDrawColor(app->renderer, 150, 150, 200, 255);
-    }
+    cell_t cell = game->cells[i][j];
+    SDL_Texture* tex;
+    if (cell.is_flagged) {
+        tex = game_textures[CELL_FLAGGED];
+    } else if (!cell.is_revealed) {
+        tex = game_textures[CELL_UNTOUCHED];
+        int hovered_x = app->mouse_x + (int)app->render_x - shift_x;
+        int hovered_y = app->mouse_y + (int)app->render_y - shift_y;
 
-    SDL_RenderFillRect(app->renderer, &rect);
-    SDL_SetRenderDrawColor(app->renderer, 0, 0, 0, 255);
-    SDL_RenderDrawRect(app->renderer, &rect);
+        if ((x < hovered_x) && (hovered_x < x + w) && (y < hovered_y) && (hovered_y < y + h)) {
+            tex = game_textures[CELL_UNTOUCHED_HOVERED];
+        }
+
+    } else if (cell.is_mine) {
+        tex = game_textures[CELL_BOMB];
+    } else {
+        tex = game_textures[CELL_0 + cell.number];
+    }
+    SDL_RenderCopy(app->renderer, tex, NULL, &rect);
 }
 
 void game_render() {
@@ -125,7 +222,7 @@ void game_render() {
 
 int main(int argc, char** argv) {
     app = (app_t*)malloc(sizeof(app_t));
-    game = minesweeper_create(500, 400, 500*200);
+    game = minesweeper_create(25, 25, 49);
 
     app->running = true;
     app->screen_width = 800;
@@ -150,6 +247,28 @@ int main(int argc, char** argv) {
     app->renderer = SDL_CreateRenderer(app->window, -1, 0);
     assert(app->renderer != NULL);
     print("Initialized application window and renderer.\n");
+
+    game_textures[0] = IMG_LoadTexture(app->renderer, "./res/cell_untouched.png");
+    game_textures[1] = IMG_LoadTexture(app->renderer, "./res/cell_flagged.png");
+    game_textures[2] = IMG_LoadTexture(app->renderer, "./res/cell_bomb.png");
+    game_textures[3] = IMG_LoadTexture(app->renderer, "./res/cell_0.png");
+    game_textures[4] = IMG_LoadTexture(app->renderer, "./res/cell_1.png");
+    game_textures[5] = IMG_LoadTexture(app->renderer, "./res/cell_2.png");
+    game_textures[6] = IMG_LoadTexture(app->renderer, "./res/cell_3.png");
+    game_textures[7] = IMG_LoadTexture(app->renderer, "./res/cell_4.png");
+    game_textures[8] = IMG_LoadTexture(app->renderer, "./res/cell_5.png");
+    game_textures[9] = IMG_LoadTexture(app->renderer, "./res/cell_6.png");
+    game_textures[10] = IMG_LoadTexture(app->renderer, "./res/cell_7.png");
+    game_textures[11] = IMG_LoadTexture(app->renderer, "./res/cell_8.png");
+    game_textures[12] = IMG_LoadTexture(app->renderer, "./res/cell_untouched_hover.png");
+
+    for (int i = 0; i < 13; i++) {
+        if (game_textures[i] == NULL) {
+            print("Texture %i is NULL.\n", i);
+            exit(1);
+        }
+    }
+    
 
     double last_tick = (double)SDL_GetTicks();
     double current_tick = (double)SDL_GetTicks();
