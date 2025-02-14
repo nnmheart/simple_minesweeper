@@ -1,9 +1,12 @@
 #include<stdio.h>
+#include<stdlib.h>
 #include<stdbool.h>
+#include<time.h>
 #include<malloc.h>
 #include<assert.h>
 #include<SDL2/SDL.h>
 #include<SDL2/SDL_image.h>
+#include<SDL2/SDL_ttf.h>
 
 #include<app.h>
 #include<mineswep.h>
@@ -14,6 +17,10 @@ SDL_Texture* game_textures[13];
 
 const int shift_x = 200;
 const int shift_y = 50;
+
+int start_grid_w = 25;
+int start_grid_h = 25;
+int start_mine_count = 49;
 
 enum TextureIds {
     CELL_UNTOUCHED = 0,
@@ -54,6 +61,27 @@ void handle_keypress(SDL_Event event) {
         case SDLK_d:
             app->grid_mot_x = pressed ? 1 : 0;
             break;
+        
+        case SDLK_g:
+            if (!app->game_ended) break;
+            for (int y = 0; y < game->grid_height; y++) {
+                for (int x = 0; x < game->grid_width; x++) {
+                    cell_t* cell = &game->cells[x][y];
+                    cell->is_flagged = false;
+                    cell->is_revealed = false;
+                }
+            }
+            app->game_lost = false;
+            app->game_ended = false;
+            break;
+        
+        case SDLK_f:
+            if (!app->game_ended) break;
+            minesweeper_destroy(game);
+            game = minesweeper_create(start_grid_w, start_grid_h, start_mine_count);
+            app->game_lost = false;
+            app->game_ended = false;
+            break;
 
         default:
             break;
@@ -61,10 +89,31 @@ void handle_keypress(SDL_Event event) {
 }
 
 void on_mouse_move(SDL_Event e) {
+    if (app->game_ended) return;
     app->mouse_x = (int)e.motion.x;
     app->mouse_y = (int)e.motion.y;
 }
 
+void check_if_won() {
+    if (app->game_ended) return;
+
+    int total = game->grid_height * game->grid_width;
+    int revealed = 0;
+    int total_mines = 0;
+
+    for (int y = 0; y < game->grid_height; y++) {
+        for (int x = 0; x < game->grid_width; x++) {
+            cell_t cell = game->cells[x][y];
+            if (cell.is_mine) total_mines += 1;
+            if (cell.is_revealed) revealed += 1;
+        }
+    }
+
+    if (total - total_mines == revealed) {
+        app->game_ended = true;
+        app->game_lost = false;
+    }
+}
 
 
 void reveal_cell(int i, int j, bool only_zero) {
@@ -83,14 +132,19 @@ void reveal_cell(int i, int j, bool only_zero) {
     if (cell->is_revealed) return; // End case for the recursion.
     if (cell->is_flagged) return;
     if (only_zero) {
-        if (!cell->is_mine && (cell->number == 0)) cell->is_revealed = true;
+        if (!cell->is_mine && (cell->number == 0)) {
+            cell->is_revealed = true;
+            check_if_won();
+        }
         else return;
     } else {
         cell->is_revealed = true;
+        check_if_won();
     }
 
     if (cell->is_mine) {
-        // TODO: Bomb logic.
+        app->game_ended = true;
+        app->game_lost = true;
     } else {
         if (cell->number != 0) return;
         reveal_cell(i - 1, j + 1, true);
@@ -113,6 +167,7 @@ void flag_cell(int i, int j) {
 }
 
 void on_mouse_click(SDL_Event e) {
+    if (app->game_ended) return;
     int target_x = e.button.x;
     int target_y = e.button.y;
     int cell_x = target_x + (int)(app->render_x) - shift_x;
@@ -207,6 +262,29 @@ void game_render_cell(int i, int j) {
     SDL_RenderCopy(app->renderer, tex, NULL, &rect);
 }
 
+void app_render_text(char* text, SDL_Color fg, SDL_Color bg, int x, int y, int w, int h) {
+    SDL_Surface* surf = TTF_RenderText(
+        app->font,
+        text,
+        fg,
+        bg
+    );
+    SDL_Texture* tex = SDL_CreateTextureFromSurface(app->renderer, surf);
+    SDL_RenderCopy(
+        app->renderer, 
+        tex, 
+        NULL, 
+        &(SDL_Rect){
+            .x = x,
+            .y = y,
+            .w = w,
+            .h = h
+        }
+    );
+    SDL_DestroyTexture(tex);
+    SDL_FreeSurface(surf);
+}
+
 void game_render() {
     SDL_SetRenderDrawColor(app->renderer, 255, 200, 200, 255);
     SDL_RenderClear(app->renderer);
@@ -217,12 +295,60 @@ void game_render() {
         }
     }
 
+    if (app->game_ended) {
+        SDL_Color fg = (SDL_Color){.r = 255, .b = 200, .g = 200, .a = 255};
+        SDL_Color bg = (SDL_Color){.r = 0, .b = 0, .g =0, .a = 255};        
+
+        if (app->game_lost) {
+            app_render_text(
+                "YOU LOST. CLICK G TO REPLAY SAME GRID. CLICK F TO GENERATE NEW GRID WITH SAME SETTINGS.", 
+                fg, 
+                bg, 
+                0, app->screen_height-50,
+                600, 30
+            );
+        } else {
+            app_render_text(
+                "YOU WON. CLICK G TO REPLAY SAME GRID. CLICK F TO GENERATE NEW GRID WITH SAME SETTINGS.", 
+                fg, 
+                bg, 
+                0, app->screen_height-50,
+                600, 30
+            );
+            
+        }
+    }
+
     SDL_RenderPresent(app->renderer);
 }
 
 int main(int argc, char** argv) {
+    int mode = 0;
+    for (int i = 1; i < argc; i++) {
+        char* arg = argv[i];
+        if (mode == 0) {
+            if (strcmp(arg, "-w") == 0) {
+                mode = 1;
+            }
+            if (strcmp(arg, "-h") == 0) {
+                mode = 2;
+            }
+            if (strcmp(arg, "-c") == 0) {
+                mode = 3;
+            }
+        } else {
+            if (mode == 1) start_grid_w = SDL_atoi(arg);
+            else if (mode == 2) start_grid_h = SDL_atoi(arg);
+            else start_mine_count = SDL_atoi(arg);
+            mode = 0;
+        }
+    }
+
+
+    srand(time(NULL));
+
     app = (app_t*)malloc(sizeof(app_t));
-    game = minesweeper_create(25, 25, 49);
+    game = minesweeper_create(start_grid_w, start_grid_h, start_mine_count);
 
     app->running = true;
     app->screen_width = 800;
@@ -236,6 +362,9 @@ int main(int argc, char** argv) {
     app->mouse_x = 0;
     app->mouse_y = 0;
 
+    app->game_ended = false;
+    app->game_lost = false;
+
     assert(SDL_Init(SDL_INIT_EVERYTHING) == 0);
     app->window = SDL_CreateWindow(
         "Minesweeper", 
@@ -246,7 +375,9 @@ int main(int argc, char** argv) {
     assert(app->window != NULL);
     app->renderer = SDL_CreateRenderer(app->window, -1, 0);
     assert(app->renderer != NULL);
+    assert(SDL_SetRenderDrawBlendMode(app->renderer, SDL_BLENDMODE_BLEND) == 0);
     print("Initialized application window and renderer.\n");
+    assert(TTF_Init() == 0);
 
     game_textures[0] = IMG_LoadTexture(app->renderer, "./res/cell_untouched.png");
     game_textures[1] = IMG_LoadTexture(app->renderer, "./res/cell_flagged.png");
@@ -268,8 +399,9 @@ int main(int argc, char** argv) {
             exit(1);
         }
     }
+    app->font = TTF_OpenFont("./OpenSans-Regular.ttf", 24);
+    assert(app->font != NULL);
     
-
     double last_tick = (double)SDL_GetTicks();
     double current_tick = (double)SDL_GetTicks();
     double delta_accum = 0.0;

@@ -1,4 +1,4 @@
-libs_args = -lmingw32 -lSDL2main -lSDL2 -lSDL2_image
+libs_args = -lmingw32 -lSDL2main -lSDL2 -lSDL2_image -lSDL2_ttf
 c_files = $(wildcard src/*.c)
 o_files = $(patsubst src/%.c,obj/%.o, $(c_files))
 
