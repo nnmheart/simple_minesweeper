@@ -13,6 +13,15 @@ typedef struct app_t {
     int screen_height;
     SDL_Window* window;
     SDL_Renderer* renderer;
+
+    int cell_size;
+    double render_x;
+    double render_y;
+
+    int grid_mot_x;
+    int grid_mot_y;
+    int mouse_x;
+    int mouse_y;
 } app_t;
 
 #endif // _APP_H
