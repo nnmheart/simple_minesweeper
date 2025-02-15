@@ -15,8 +15,8 @@ app_t* app;
 minesweeper_t* game;
 SDL_Texture* game_textures[13];
 
-const int shift_x = 200;
-const int shift_y = 50;
+const int shift_x = 0;
+const int shift_y = 0;
 
 int start_grid_w = 25;
 int start_grid_h = 25;
@@ -81,6 +81,17 @@ void handle_keypress(SDL_Event event) {
             game = minesweeper_create(start_grid_w, start_grid_h, start_mine_count);
             app->game_lost = false;
             app->game_ended = false;
+            break;
+        
+        case SDLK_MINUS:
+        case SDLK_KP_MINUS:
+            app->cell_size -= 2;
+            if (app->cell_size < 0) app->cell_size = 20;
+            break;
+        
+        case SDLK_PLUS:
+        case SDLK_KP_PLUS:
+            app->cell_size += 2;
             break;
 
         default:
