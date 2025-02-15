@@ -93,16 +93,24 @@ void handle_keypress(SDL_Event event) {
         case SDLK_KP_PLUS:
             app->cell_size += 2;
             break;
-
+        
         default:
             break;
     }
 }
 
 void on_mouse_move(SDL_Event e) {
-    if (app->game_ended) return;
-    app->mouse_x = (int)e.motion.x;
-    app->mouse_y = (int)e.motion.y;
+    int nmx = (int)e.motion.x;
+    int nmy = (int)e.motion.y;
+
+    if (app->mouse_active) {
+        app->grid_moving = true;
+        app->render_x -= (double)(nmx - app->mouse_x);
+        app->render_y -= (double)(nmy - app->mouse_y);
+    }
+
+    app->mouse_x = nmx;
+    app->mouse_y = nmy;
 }
 
 void check_if_won() {
@@ -177,7 +185,12 @@ void flag_cell(int i, int j) {
     cell->is_flagged = !cell->is_flagged;
 }
 
-void on_mouse_click(SDL_Event e) {
+void on_mouse_release(SDL_Event e) {
+    app->mouse_active = false;
+    if (app->grid_moving) {
+        app->grid_moving = false;
+        return;
+    };
     if (app->game_ended) return;
     int target_x = e.button.x;
     int target_y = e.button.y;
@@ -198,6 +211,18 @@ void on_mouse_click(SDL_Event e) {
     }
 }
 
+void on_mouse_click(SDL_Event e) {
+    app->mouse_active = true;
+    app->grid_moving = false;
+}
+
+void handle_mouse_scroll(SDL_Event e) {
+    app->cell_size += e.wheel.y;
+    while (app->cell_size < 0) {
+        app->cell_size = 20;
+    }
+}
+
 void game_handle_events() {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
@@ -215,8 +240,17 @@ void game_handle_events() {
             case SDL_MOUSEBUTTONDOWN:
                 on_mouse_click(event);
                 break;
+            
+            case SDL_MOUSEBUTTONUP:
+                on_mouse_release(event);
+                break;
+            
             case SDL_MOUSEMOTION:
                 on_mouse_move(event);
+                break;
+            
+            case SDL_MOUSEWHEEL:
+                handle_mouse_scroll(event);
                 break;
 
             default:
@@ -375,6 +409,8 @@ int main(int argc, char** argv) {
 
     app->game_ended = false;
     app->game_lost = false;
+    app->grid_moving = false;
+    app->mouse_active = false;
 
     assert(SDL_Init(SDL_INIT_EVERYTHING) == 0);
     app->window = SDL_CreateWindow(

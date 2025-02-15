@@ -26,6 +26,8 @@ typedef struct app_t {
 
     bool game_ended;
     bool game_lost;
+    bool grid_moving;
+    bool mouse_active;
     TTF_Font* font;
 } app_t;
 
