@@ -135,7 +135,7 @@ void check_if_won() {
 }
 
 
-void reveal_cell(int i, int j, bool only_zero) {
+void reveal_cell(int i, int j) {
     int width = game->grid_width;
     int height = game->grid_height;
 
@@ -150,32 +150,24 @@ void reveal_cell(int i, int j, bool only_zero) {
 
     if (cell->is_revealed) return; // End case for the recursion.
     if (cell->is_flagged) return;
-    if (only_zero) {
-        if (!cell->is_mine && (cell->number == 0)) {
-            cell->is_revealed = true;
-            check_if_won();
-        }
-        else return;
-    } else {
-        cell->is_revealed = true;
-        check_if_won();
-    }
+    cell->is_revealed = true;
 
     if (cell->is_mine) {
         app->game_ended = true;
         app->game_lost = true;
     } else {
+        check_if_won();
         if (cell->number != 0) return;
-        reveal_cell(i - 1, j + 1, true);
-        reveal_cell(i - 1, j    , true);
-        reveal_cell(i - 1, j - 1, true);
+        reveal_cell(i - 1, j + 1);
+        reveal_cell(i - 1, j    );
+        reveal_cell(i - 1, j - 1);
         
-        reveal_cell(i    , j + 1, true);
-        reveal_cell(i    , j - 1, true);
+        reveal_cell(i    , j + 1);
+        reveal_cell(i    , j - 1);
 
-        reveal_cell(i + 1, j + 1, true);
-        reveal_cell(i + 1, j    , true);
-        reveal_cell(i + 1, j - 1, true);
+        reveal_cell(i + 1, j + 1);
+        reveal_cell(i + 1, j    );
+        reveal_cell(i + 1, j - 1);
     }
 }
 
@@ -205,7 +197,7 @@ void on_mouse_release(SDL_Event e) {
     if (cell_j >= game->grid_height) return;
 
     if (e.button.button == SDL_BUTTON_LEFT) {
-        reveal_cell(cell_i, cell_j, false);
+        reveal_cell(cell_i, cell_j);
     } else {
         flag_cell(cell_i, cell_j);
     }
